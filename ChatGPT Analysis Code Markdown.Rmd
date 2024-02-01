@@ -1,0 +1,147 @@
+---
+title: "Final Project Analysis"
+author: "Younjoo Lee"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+```{css, echo = FALSE} 
+.boxed {
+  border: 4px solid green;
+  padding: 10px;
+  margin: 20px 0;
+  background-color: white;
+}
+```
+
+```{r setup, include=FALSE}
+## clear the environment
+## Don't change this block
+rm(list=ls())
+```
+
+
+Load the packages we want.
+```{r packages, message=FALSE, warning=FALSE}
+### Quietly load all packages needed
+library(pwr)
+library(readxl) 
+library(dplyr)
+library(knitr)
+```
+
+
+1) Load and explore the data 
+```{r part1_r_work}
+### Load data and descriptive statistics
+gpt = read.csv('chat_gpt_experiment_data.csv', header = TRUE)
+summary(gpt)
+```
+
+<div class="boxed">
+There were 1903 participants in the study. It took on average 236 seconds or about 4 minutes to complete the study. The average initial guess for the headcount was 7977 heads. But the intial guesses ranged from 6 to 2,545,000 and the median was 1500. The guesses decreased in terms of range and averages for guess 2 but the median increased. The strategies used from the participants were on average somewhat similar or somewhat different to what they received in treatment (if they received a condition). The average confidence was slightly confident. The average use of GPT was ocassionally/sometimes. 
+</div>
+
+2) Test for balance
+
+Are the condition and control groups balanced in terms of prior Chat GPT usage? Do the initial guesses look balanced? 
+
+```{r 3balance}
+### Calculations for balance 
+# gpt pre survey question
+balance_table0 <- gpt %>%
+  group_by(condition) %>%
+  summarise(
+    mean_use_gpt = mean(use_gpt, na.rm = TRUE),
+    N = n()
+  )
+print(balance_table0)
+
+# guess1
+balance_table <- gpt %>%
+  group_by(condition) %>%
+  summarise(
+    mean_guess1 = mean(guess1, na.rm = TRUE),
+    N = n()
+  )
+print(balance_table)
+```
+
+<div class="boxed">
+It looks like the number of participants in each condition are balanced along with the average use of chatgpt (pre-survey question); however, it looks like condition 2 (expert) has a higher average initial guess compared to condition 0 and 1 by over 1000 heads. 
+</div>
+
+Out of curiosity, what are the mean guesses after exposure to condition?
+
+```{r guess2}
+balance_table2 <- gpt %>%
+  group_by(condition) %>%
+  summarise(
+    mean_guess2 = mean(guess2, na.rm = TRUE),
+    N = n()
+  )
+print(balance_table2)
+```
+
+<div class="boxed">
+All of the guesses decreased, but condition 1 (chatgpt) decreased significantly by almost half. This could mean that the aid of ChatGPT significantly reduced the guesses... I will revisit the differences in guesses (from initial to post condition) later in the report. I will not dive into it further now because it is not the main focus of my hypothesis regarding confidence. 
+</div>
+
+3) ATE and CI on confidence
+``````{r ate}
+  arm_info = gpt %>% group_by(condition) %>% summarise(
+    mean_confidence = mean(confidence),
+    sd_confidence = sd(confidence),
+    N = n(),
+    lb = mean_confidence - 1.96*sd_confidence/sqrt(N),
+    ub = mean_confidence + 1.96*sd_confidence/sqrt(N),
+  )
+  
+  ate_info = arm_info %>% mutate( 
+    ate = mean_confidence - mean_confidence[1], 
+    se_ate = sqrt( sd_confidence^2 / N + sd_confidence[1]^2/N[1] ),
+    lb = ate - 1.96*se_ate,
+    ub = ate + 1.96*se_ate
+  )
+  
+  kable(ate_info, digits = 2)
+```
+
+<div class="boxed">
+It appears that the ATE for condition 1 and 2 are slightly negative, meaning the confidence of the participants' answers very slightly drop. However, the upper and lower bounds of the 95% CI for ATE indicate that this is a noisy estimate because they range from negative to positive values, including 0 which rules out a statistically significant effect size. Therefore, there is not a statistically meaningful difference in participants' confidence in their answers post condition. I would also argue that the ATE of -0.04 for condition 1 and -0.03 for condition 2 are not meaningful in a business or academic setting because the ATE is near zero. 
+</div>
+
+4) Analysis of guesses 1 and 2 - I used ChatGPT to analyze the effect post exposure to the treatments for the differences in their initial and second guess for headcount estimates.
+``````{r guess1 & 2}
+# Used chat GPT for this, I asked:
+# How would I analyze the effect after the condition or treatment from guess 1 and guess 2 to calculate the differences and if they're statistically significant
+# Paired t-test for condition 0
+t_test_result_0 <- t.test(gpt$guess1[gpt$condition == 0], gpt$guess2[gpt$condition == 0], paired = TRUE)
+
+# Paired t-test for condition 1
+t_test_result_1 <- t.test(gpt$guess1[gpt$condition == 1], gpt$guess2[gpt$condition == 1], paired = TRUE)
+
+# Paired t-test for condition 2
+t_test_result_2 <- t.test(gpt$guess1[gpt$condition == 2], gpt$guess2[gpt$condition == 2], paired = TRUE)
+
+# Check the p-values to determine if the differences are statistically significant
+print(t_test_result_0$p.value)
+print(t_test_result_1$p.value)
+print(t_test_result_2$p.value)
+
+# Calculate the mean differences and confidence intervals
+mean_diff_ci_0 <- t.test(gpt$guess2[gpt$condition == 0] - gpt$guess1[gpt$condition == 0])$conf.int
+mean_diff_ci_1 <- t.test(gpt$guess2[gpt$condition == 1] - gpt$guess1[gpt$condition == 1])$conf.int
+mean_diff_ci_2 <- t.test(gpt$guess2[gpt$condition == 2] - gpt$guess1[gpt$condition == 2])$conf.int
+
+# Check if the confidence intervals exclude zero
+print(mean_diff_ci_0)
+print(mean_diff_ci_1)
+print(mean_diff_ci_2)
+```
+
+<div class="boxed">
+The differences between guess 1 and guess 2 for all conditions 0,1,2 are not statistically significant. The p-value is greater than 0.05, meaning there is not enough evidence to suggest that there is a difference at the 0.05 significance level. Also, the mean difference using the 95% CI for the guesses include 0 which is a noisy estimate, meaning there is not a statistically significant difference. 
+</div>
